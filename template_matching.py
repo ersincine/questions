@@ -38,6 +38,8 @@ def first_rows_contains_black(crop, num_rows, tol=50, black=0):
     return (crop[:num_rows, :] < black + tol).any()
 
 
+# TODO: Üstteki fonksiyonlar birleştirilebilir. 4 fonksiyon yeterli.
+
 class Rectangle:
 
     def __init__(self, tl, br):
@@ -106,7 +108,7 @@ class Rectangle:
         self.move_up(amount, tl=True, br=False)
 
     def expand_right_forever(self, img):
-        w, h = img.shape[::-1]
+        w, _ = img.shape[::-1]
         assert w > self.tl[0] >= 0
         assert w > self.br[0] >= 0
         self.br = (w - 1, self.br[1])
@@ -117,7 +119,7 @@ class Rectangle:
         self.tl = (0, self.tl[1])
 
     def expand_down_forever(self, img):
-        w, h = img.shape[::-1]
+        _, h = img.shape[::-1]
         assert h > self.tl[1] >= 0
         assert h > self.br[1] >= 0
         self.br = (self.br[0], h - 1)
@@ -127,7 +129,6 @@ class Rectangle:
         assert self.br[1] >= 0
         self.tl = (self.tl[0], 0)
 
-    # Şıklar alt alta ise, yüksekliklerini bulmak için:
     def expand_until_rectangle_below(self, rectangle_below):
         target_row = rectangle_below.tl[1] - 1
         amount = target_row - self.br[1]

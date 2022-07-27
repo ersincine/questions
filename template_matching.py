@@ -1,234 +1,85 @@
 import cv2 as cv
 import numpy as np
 
-
-def add_pairs(pair0, pair1):
-    return pair0[0] + pair1[0], pair0[1] + pair1[1]
+from rectangle import Rectangle
 
 
-def last_column_contains_non_white(crop, tol=50, white=255):
-    return any(crop[:, -1] < white - tol)
+def match(img, template, method, max_num_matches=1, threshold=0.0):
+    assert threshold >= 0.0
+    # max_num_matches = 1 --> threshold will be ignored.
 
-
-def last_row_contains_non_white(crop, tol=50, white=255):
-    return any(crop[-1, :] < white - tol)
-
-
-def first_column_contains_non_white(crop, tol=50, white=255):
-    return any(crop[:, 0] < white - tol)
-
-
-def first_row_contains_non_white(crop, tol=50, white=255):
-    return any(crop[0, :] < white - tol)
-
-
-#def last_columns_contains_black(crop, num_cols, tol=50, black=0):
-#    return (crop[:, -num_cols:] < black + tol).any()
-
-
-def last_rows_contains_black(crop, num_rows, tol=50, black=0):
-    return (crop[-num_rows:, :] < black + tol).any()
-
-
-#def first_columns_contains_black(crop, num_cols, tol=50, black=0):
-#    return (crop[:, :num_cols] < black + tol).any()
-
-
-def first_rows_contains_black(crop, num_rows, tol=50, black=0):
-    return (crop[:num_rows, :] < black + tol).any()
-
-
-# TODO: Üstteki fonksiyonlar birleştirilebilir. 4 fonksiyon yeterli.
-
-class Rectangle:
-
-    def __init__(self, tl, br):
-        assert isinstance(tl, tuple)
-        assert len(tl) == 2
-        assert isinstance(tl[0], int)
-        assert isinstance(tl[1], int)
-        assert isinstance(br, tuple)
-        assert len(br) == 2
-        assert isinstance(br[0], int)
-        assert isinstance(br[1], int)
-
-        # tl ve br birer pair
-        # Öyle ki ilk değer x (yatay), ikinci değer y (dikey)
-        # x sağa doğru artar, y aşağı doğru
-        # Yani aslında satır sütun gibi ama tersten
-        self.tl = tl
-        self.br = br
-
-    def width(self):
-        width = self.br[0] - self.tl[0]
-        assert width > 0
-        return width
-
-    def height(self):
-        height = self.br[1] - self.tl[1]
-        assert height > 0
-        return height
-
-    def move_right(self, amount, tl=True, br=True):
-        assert isinstance(amount, int)
-        if tl:
-            self.tl = add_pairs(self.tl, (amount, 0))
-        if br:
-            self.br = add_pairs(self.br, (amount, 0))
-
-    def move_left(self, amount, tl=True, br=True):
-        assert isinstance(amount, int)
-        self.move_right(-amount, tl=tl, br=br)
-
-    def move_down(self, amount, tl=True, br=True):
-        assert isinstance(amount, int)
-        if tl:
-            self.tl = add_pairs(self.tl, (0, amount))
-        if br:
-            self.br = add_pairs(self.br, (0, amount))
-
-    def move_up(self, amount, tl=True, br=True):
-        assert isinstance(amount, int)
-        self.move_down(-amount, tl=tl, br=br)
-
-    def expand_right(self, amount):
-        assert isinstance(amount, int)
-        self.move_right(amount, tl=False, br=True)
-
-    def expand_left(self, amount):
-        assert isinstance(amount, int)
-        self.move_left(amount, tl=True, br=False)
-
-    def expand_down(self, amount):
-        assert isinstance(amount, int)
-        self.move_down(amount, tl=False, br=True)
-
-    def expand_up(self, amount):
-        assert isinstance(amount, int)
-        self.move_up(amount, tl=True, br=False)
-
-    def expand_right_forever(self, img):
-        w, _ = img.shape[::-1]
-        assert w > self.tl[0] >= 0
-        assert w > self.br[0] >= 0
-        self.br = (w - 1, self.br[1])
-
-    def expand_left_forever(self):
-        assert self.tl[0] >= 0
-        assert self.br[0] >= 0
-        self.tl = (0, self.tl[1])
-
-    def expand_down_forever(self, img):
-        _, h = img.shape[::-1]
-        assert h > self.tl[1] >= 0
-        assert h > self.br[1] >= 0
-        self.br = (self.br[0], h - 1)
-
-    def expand_up_forever(self):
-        assert self.tl[1] >= 0
-        assert self.br[1] >= 0
-        self.tl = (self.tl[0], 0)
-
-    def expand_until_rectangle_below(self, rectangle_below):
-        target_row = rectangle_below.tl[1] - 1
-        amount = target_row - self.br[1]
-        assert amount >= 0
-        self.expand_down(amount)
-
-    def expand_until_rectangle_next(self, rectangle_next):
-        target_column = rectangle_next.tl[0] - 1
-        amount = target_column - self.br[0]
-        assert amount >= 0
-        self.expand_right(amount)
-
-    def shrink(self, img, padding=0):
-        assert isinstance(padding, int)
-        assert padding >= 0
-
-        # Her yönden gereksiz kısımları at
-        # Bundan önce expand_right_forever falan yapılabilir
-
-        # En sağ sırf beyaz olduğu sürece küçült
-        # Sonuna kadar büyüt:
-        while self.br[0] > self.tl[0] + 1:
-            # 1 piksel küçültüp bir bak
-            new_rectangle = Rectangle(self.tl, self.br)
-            new_rectangle.move_left(1, tl=False, br=True)
-            if last_column_contains_non_white(crop_using_rectangle(img, new_rectangle)):
-                break
-            # Eğer tamamı beyazsa gerçekten 1 piksel küçült
-            self.move_left(1, tl=False, br=True)
-        self.move_right(padding, tl=False, br=True)
-
-        # Sol için yap
-        while self.br[0] > self.tl[0] + 1:
-            new_rectangle = Rectangle(self.tl, self.br)
-            new_rectangle.move_right(1, tl=True, br=False)
-            if first_column_contains_non_white(crop_using_rectangle(img, new_rectangle)):
-                break
-            self.move_right(1, tl=True, br=False)
-        self.move_left(padding, tl=True, br=False)
-
-        # Aşağı için yap
-        while self.br[1] > self.tl[1] + 1:
-            # 1 piksel küçültüp bir bak
-            new_rectangle = Rectangle(self.tl, self.br)
-            new_rectangle.move_up(1, tl=False, br=True)
-            if last_row_contains_non_white(crop_using_rectangle(img, new_rectangle)):
-                break
-            # Eğer tamamı beyazsa gerçekten 1 piksel küçült
-            self.move_up(1, tl=False, br=True)
-        self.move_down(padding, tl=False, br=True)
-
-        # Yukarı için yap
-        while self.br[1] > self.tl[1] + 1:
-            new_rectangle = Rectangle(self.tl, self.br)
-            new_rectangle.move_down(1, tl=True, br=False)
-            if first_row_contains_non_white(crop_using_rectangle(img, new_rectangle)):
-                break
-            self.move_down(1, tl=True, br=False)
-        self.move_up(padding, tl=True, br=False)
-
-    def vertically_expand(self, img, padding=5):
-        # En alttaki 5 sütun içinde siyah renk olduğu sürece aşağı doğru 1 piksel daha büyüt:
-        while self.br[1] < img.shape[0] - 1 and last_rows_contains_black(crop_using_rectangle(img, self), padding):
-            self.move_down(1, tl=False, br=True)
-
-        # En üstteki 5 sütun içinde siyah renk olduğu sürece yukarı doğru 1 piksel daha büyüt:
-        while self.tl[1] > 1 and first_rows_contains_black(crop_using_rectangle(img, self), padding):
-            self.move_up(1, tl=True, br=False)
-
-    def scale(self, scale):
-        self.tl = (round(scale * self.tl[0]), round(scale * self.tl[1]))
-        self.br = (round(scale * self.br[0]), round(scale * self.br[1]))
-
-
-def crop_using_rectangle(img: np.ndarray, rectangle: Rectangle):
-    return img[rectangle.tl[1]:rectangle.br[1], rectangle.tl[0]:rectangle.br[0]]
-
-
-def match(img, template, method):
-    #img = img.copy()
-    method = eval(method)
-    res = cv.matchTemplate(img, template, method)
-    min_val, max_val, min_loc, max_loc = cv.minMaxLoc(res)
-
-    if method in [cv.TM_SQDIFF, cv.TM_SQDIFF_NORMED]:
-        top_left = min_loc
-        score = -min_val
-    else:
-        top_left = max_loc
-        score = max_val
-
+    # img = img.copy()
     w, h = template.shape[::-1]
-    bottom_right = (top_left[0] + w, top_left[1] + h)
-    rect = Rectangle(top_left, bottom_right)
-    return res, rect, score
+
+    method = eval(method)
+    minimization = method in [cv.TM_SQDIFF, cv.TM_SQDIFF_NORMED]  # Otherwise maximization
+
+    result = cv.matchTemplate(img, template, method)
+    modified_result = result.copy()
+
+    rectangles = []
+    scores = []
+    while True:
+
+        if len(rectangles) == max_num_matches:
+            break
+
+        min_val, max_val, min_loc, max_loc = cv.minMaxLoc(modified_result)
+
+        if minimization:
+            top_left = min_loc
+            score = -min_val
+            fill_value = np.inf
+        else:
+            top_left = max_loc
+            score = max_val
+            fill_value = -np.inf
+
+        if len(scores) > 0:
+            if abs(scores[0] - score) / max(scores[0], score) > threshold:
+                break
+
+        bottom_right = (top_left[0] + w, top_left[1] + h)
+        rectangle = Rectangle(top_left, bottom_right)
+
+        rectangles.append(rectangle)
+        scores.append(score)
+
+        row_start = top_left[1] - h // 2
+        row_end = top_left[1] + h // 2
+        col_start = top_left[0] - w // 2
+        col_end = top_left[0] + w // 2
+
+        """
+        # Bana mantıklı gelen şu:
+        row_start = top_left[1]
+        row_end = top_left[1] + h
+        col_start = top_left[0]
+        col_end = top_left[0] + w
+        """
+
+        # TODO: Eğer kenarlarda bulunduğu zaman bu kod çalışmazsa max(..., 0) falan yapılır.
+        # TODO: 1 piksellik bir hata olabilir.
+        modified_result[row_start: row_end, col_start: col_end] = fill_value
+
+        """
+        if max_num_matches > 1:
+            print("Ersin")
+            print(row_start, row_end, col_start, col_end)
+            import matplotlib.pyplot as plt
+            import os
+            num = 1
+            while os.path.exists(f"x{num}.png"):
+                num += 1
+            plt.imsave(f"x{num}.png", modified_result)
+
+        """
+    return result, rectangles, scores
 
 
 def multiscale_match(img, template, method, min_scale=0.2, max_scale=5.0, num_scales=50):
     best_score = None
-    best_rect = None
+    best_rectangle = None
     best_scale = None
 
     for scale in np.geomspace(min_scale, max_scale, num_scales)[::-1]:  # np.linspace
@@ -240,13 +91,16 @@ def multiscale_match(img, template, method, min_scale=0.2, max_scale=5.0, num_sc
             break
 
         resized_img = cv.resize(img, dim)
-        _, rect, score = match(resized_img, template, method)
+        _, rectangles, scores = match(resized_img, template, method, max_num_matches=1)
+        assert len(rectangles) == 1 and len(scores) == 1
+        rectangle = rectangles[0]
+        score = scores[0]
 
         if best_score is None or score > best_score:
             best_score = score
-            best_rect = rect
+            best_rectangle = rectangle
             best_scale = scale
 
     #print(best_scale)
-    best_rect.scale(1 / best_scale)
-    return best_rect, best_score, best_scale
+    best_rectangle.scale(1 / best_scale)
+    return best_rectangle, best_score, best_scale
